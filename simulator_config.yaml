@@ -1,12 +1,12 @@
 paths:
-  workload: "workloads/generated_200_16.json"
-  platform: "platforms/generated_32.json"
-  output: "results/generated_200_16_3600"
+  workload: "Tugas_Project/nasa-20-back.json" #atau "Tugas_Project/nasa-80-front.json"
+  platform: "Tugas_Project/platform-nasa.json" 
+  output: "results/generated_test_mymethod3600" #atau "results/generated_train_300" (300 - 3600)
 
 run:
-  algorithm: "easy_auto"
+  algorithm: "easy_mymethod"
   overrun_policy: "terminate"
-  timeout: 3600
+  timeout: 3600 #(300 - 3600)
   # start_time can be:
   # - integer epoch (e.g., 0), or
   # - string "YYYY-MM-DD HH:MM:SS" (local), or "now"

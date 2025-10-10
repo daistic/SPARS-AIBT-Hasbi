@@ -95,6 +95,85 @@ class BaseAlgorithm():
             self.push_event(next_earliest, {'type': 'call_me_later'})
             self.next_timeout_at = next_earliest
 
+    def adaptive_timeout_policy(self):
+        now = self.current_time
+        base_timeout = self.timeout or 5  # default jika belum di-set
+
+        queue_len = len(self.waiting_queue)
+        predicted_new_jobs = getattr(self.jobs_manager, "predicted_arrivals", 0)
+
+        allocated_ids = {n['id'] for n in self.allocated}
+        timeout_node_ids = {t['node_id'] for t in self.timeout_list}
+        state_by_id = {n['id']: n for n in self.state}
+
+        switch_off = []
+        keep_timeouts = []
+        next_earliest = None
+
+        avg_speed = sum(self.compute_speeds) / len(self.compute_speeds) if self.compute_speeds else 1
+
+        # Loop semua node di cluster
+        for node in self.state:
+            if (
+                node['state'] == 'active'
+                and node['job_id'] is None
+                and node['reserved'] is False
+                and node['id'] not in allocated_ids
+            ):
+                # mulai dari base timeout
+                dynamic_timeout = base_timeout
+
+                # ✅ Tidak ada job menunggu
+                if queue_len == 0:
+                    dynamic_timeout *= 0.75
+
+                # ✅ Banyak job menunggu
+                elif queue_len > 5:
+                    dynamic_timeout *= 1.25
+
+                # ✅ Prediksi job baru datang
+                if predicted_new_jobs > 0:
+                    dynamic_timeout *= 1.25
+
+                # ✅ Node lambat
+                if node.get('compute_speed', 1) < avg_speed:
+                    dynamic_timeout *= 0.5
+
+                t_exp = now + dynamic_timeout
+
+                # Tambahkan ke daftar timeout jika belum ada
+                if node['id'] not in timeout_node_ids:
+                    self.timeout_list.append({'node_id': node['id'], 'time': t_exp})
+                    timeout_node_ids.add(node['id'])
+
+        # Evaluasi timeout yang sudah tercatat
+        for t in self.timeout_list:
+            node = state_by_id.get(t['node_id'])
+            if not node:
+                continue
+
+            # Jika belum waktunya expired → pertahankan
+            if now < t['time']:
+                keep_timeouts.append(t)
+                if next_earliest is None or t['time'] < next_earliest:
+                    next_earliest = t['time']
+            else:
+                # Timeout kadaluarsa dan node masih idle → matikan node
+                if node['job_id'] is None and node['state'] == 'active' and node['id'] not in allocated_ids:
+                    switch_off.append(node['id'])
+
+        # Perbarui daftar timeout aktif
+        self.timeout_list = keep_timeouts
+
+        # Jika ada node yang perlu dimatikan → buat event
+        if switch_off:
+            self.push_event(now, {'type': 'switch_off', 'nodes': switch_off})
+
+        # Jadwalkan event berikutnya berdasarkan timeout terdekat
+        if next_earliest is not None:
+            self.push_event(next_earliest, {'type': 'call_me_later'})
+            self.next_timeout_at = next_earliest
+
     def prep_schedule(self, new_state, waiting_queue, scheduled_queue, resources_agenda):
         self.state = new_state
         self.waiting_queue = waiting_queue

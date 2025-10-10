@@ -10,7 +10,7 @@ class EASYAuto(FCFSAuto):
         self.backfill()
 
         if self.timeout is not None:
-            super().timeout_policy()
+            super().adaptive_timeout_policy2()
 
         return self.events
 
